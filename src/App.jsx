@@ -3,37 +3,48 @@ import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import "./App.css";
 
-const App = () => {
-  const [messages, setMessages] = useState([]);
+function App() {
   const [query, setQuery] = useState("");
+  const [messages, setMessages] = useState([]);
   const [sessionId, setSessionId] = useState("");
   const [loading, setLoading] = useState(false);
-  const chatContainerRef = useRef(null);
+  const bottomRef = useRef(null);
 
+  // Scroll to bottom when messages update
   useEffect(() => {
-    const savedSession = localStorage.getItem("session_id");
-    if (savedSession) {
-      setSessionId(savedSession);
-    } else {
-      const newSession = uuidv4();
-      setSessionId(newSession);
-      localStorage.setItem("session_id", newSession);
-    }
-  }, []);
-
-  useEffect(() => {
-    chatContainerRef.current?.scrollTo({
-      top: chatContainerRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Initialize session and fetch history
+  useEffect(() => {
+    const existingSessionId = localStorage.getItem("session_id");
+    const currentSessionId = existingSessionId || uuidv4();
+    setSessionId(currentSessionId);
+    if (!existingSessionId) {
+      localStorage.setItem("session_id", currentSessionId);
+    }
+
+    axios
+      .get(`http://localhost:8000/history/${currentSessionId}`)
+      .then((res) => {
+        const historyMessages = res.data.map((entry, index) => ({
+          id: index,
+          type: entry.startsWith("User:") ? "question" : "answer",
+          text: entry.replace(/^User: |^Bot: /, ""),
+        }));
+        setMessages(historyMessages);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch chat history:", err);
+      });
+  }, []);
 
   const handleSend = async () => {
     if (!query.trim()) return;
-    const userMessage = { type: "user", text: query };
+    const userMessage = { id: Date.now(), type: "question", text: query };
     setMessages((prev) => [...prev, userMessage]);
-    setQuery("");
     setLoading(true);
+    setQuery("");
 
     try {
       const res = await axios.post("http://localhost:8000/chat", {
@@ -41,83 +52,82 @@ const App = () => {
         session_id: sessionId,
       });
 
-      const answer = res.data.answer;
-      const botMessage = { type: "bot", text: "" };
+      const botMessage = {
+        id: Date.now() + 1,
+        type: "answer",
+        text: res.data.answer,
+      };
       setMessages((prev) => [...prev, botMessage]);
-
-      let i = 0;
-      const typeInterval = setInterval(() => {
-        if (i <= answer.length) {
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1].text = answer.slice(0, i);
-            return updated;
-          });
-          i++;
-        } else {
-          clearInterval(typeInterval);
-          setLoading(false);
-        }
-      }, 20);
-    } catch (err) {
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "❌ Failed to fetch response." },
+        {
+          id: Date.now() + 1,
+          type: "answer",
+          text: "Error: Could not get response from server.",
+        },
       ]);
+      console.error("Chat API error:", error);
+    } finally {
       setLoading(false);
     }
   };
 
   const handleReset = async () => {
-    await axios.post(`http://localhost:8000/reset/${sessionId}`);
-    const newSession = uuidv4();
-    localStorage.setItem("session_id", newSession);
-    setSessionId(newSession);
-    setMessages([]);
+    try {
+      await axios.post(`http://localhost:8000/reset/${sessionId}`);
+      const newSessionId = uuidv4();
+      localStorage.setItem("session_id", newSessionId);
+      setSessionId(newSessionId);
+      setMessages([]);
+      setQuery("");
+    } catch (error) {
+      console.error("Reset failed:", error);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4">
-      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-lg p-6">
-        <h1 className="text-2xl font-bold mb-4">📰 AI News Assistant</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-white flex flex-col items-center p-4">
+      <div className="w-full max-w-2xl bg-white shadow-lg rounded-xl p-6">
+        <h1 className="text-2xl font-semibold text-center mb-4">
+          News Chatbot 🤖
+        </h1>
 
-        <div
-          ref={chatContainerRef}
-          className="h-[400px] overflow-y-auto border rounded p-4 bg-gray-50 mb-4"
-        >
-          {messages.map((msg, idx) => (
+        <div className="h-96 overflow-y-auto border rounded p-4 space-y-2 bg-gray-50">
+          {messages.map((msg) => (
             <div
-              key={idx}
-              className={`my-2 p-2 rounded ${
-                msg.type === "user"
-                  ? "bg-blue-100 text-right"
-                  : "bg-gray-200 text-left"
+              key={msg.id}
+              className={`p-3 rounded-lg ${
+                msg.type === "question"
+                  ? "bg-blue-100 text-left"
+                  : "bg-green-100 text-right"
               }`}
             >
               {msg.text}
             </div>
           ))}
+          {loading && <div className="text-gray-500">Typing...</div>}
+          <div ref={bottomRef} />
         </div>
 
-        <div className="flex gap-2">
+        <div className="mt-4 flex gap-2">
           <input
-            className="flex-1 border rounded px-3 py-2"
-            placeholder="Ask something about the news..."
+            type="text"
+            placeholder="Ask something..."
+            className="flex-1 border rounded p-2 focus:outline-none"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            disabled={loading}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
           />
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             onClick={handleSend}
-            disabled={loading}
           >
             Send
           </button>
           <button
-            className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+            className="bg-gray-300 text-gray-700 px-3 py-2 rounded hover:bg-gray-400"
             onClick={handleReset}
-            disabled={loading}
           >
             Reset
           </button>
@@ -125,6 +135,6 @@ const App = () => {
       </div>
     </div>
   );
-};
+}
 
 export default App;
