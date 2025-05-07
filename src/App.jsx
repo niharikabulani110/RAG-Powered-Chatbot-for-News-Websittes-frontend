@@ -1,88 +1,123 @@
-import { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import { v4 as uuidv4 } from "uuid";
+import "./App.css";
 
-const BACKEND_URL = "http://127.0.0.1:8000"; // Change this to your deployed backend URL
-
-function App() {
-  const [query, setQuery] = useState("");
+const App = () => {
   const [messages, setMessages] = useState([]);
-  const [sessionId, setSessionId] = useState(localStorage.getItem("session_id") || "");
+  const [query, setQuery] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const chatContainerRef = useRef(null);
 
   useEffect(() => {
-    if (sessionId) {
-      fetch(`${BACKEND_URL}/history/${sessionId}`)
-        .then(res => res.json())
-        .then(data => setMessages(data || []));
+    const savedSession = localStorage.getItem("session_id");
+    if (savedSession) {
+      setSessionId(savedSession);
+    } else {
+      const newSession = uuidv4();
+      setSessionId(newSession);
+      localStorage.setItem("session_id", newSession);
     }
-  }, [sessionId]);
+  }, []);
 
-  const sendMessage = async () => {
-    if (!query.trim()) return; // Prevent sending empty messages
+  useEffect(() => {
+    chatContainerRef.current?.scrollTo({
+      top: chatContainerRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!query.trim()) return;
+    const userMessage = { type: "user", text: query };
+    setMessages((prev) => [...prev, userMessage]);
+    setQuery("");
+    setLoading(true);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, session_id: sessionId }),
+      const res = await axios.post("http://localhost:8000/chat", {
+        query,
+        session_id: sessionId,
       });
 
-      const data = await res.json();
-      const newSession = data.session_id;
+      const answer = res.data.answer;
+      const botMessage = { type: "bot", text: "" };
+      setMessages((prev) => [...prev, botMessage]);
 
-      if (!sessionId) {
-        setSessionId(newSession);
-        localStorage.setItem("session_id", newSession);
-      }
-
-      setMessages(prev => [...prev, `Q: ${query}`, `A: ${data.answer}`]);
-      setQuery("");  // Clear input field
-    } catch (error) {
-      console.error("Error sending message:", error);
+      let i = 0;
+      const typeInterval = setInterval(() => {
+        if (i <= answer.length) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1].text = answer.slice(0, i);
+            return updated;
+          });
+          i++;
+        } else {
+          clearInterval(typeInterval);
+          setLoading(false);
+        }
+      }, 20);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { type: "bot", text: "❌ Failed to fetch response." },
+      ]);
+      setLoading(false);
     }
   };
 
-  const resetChat = async () => {
-    if (!sessionId) return;
-    await fetch(`${BACKEND_URL}/reset/${sessionId}`, { method: "POST" });
-    localStorage.removeItem("session_id");
-    setSessionId("");
+  const handleReset = async () => {
+    await axios.post(`http://localhost:8000/reset/${sessionId}`);
+    const newSession = uuidv4();
+    localStorage.setItem("session_id", newSession);
+    setSessionId(newSession);
     setMessages([]);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 flex justify-center items-center p-4">
-      <div className="w-full max-w-xl bg-white shadow-lg rounded-lg p-6 space-y-4">
-        <h1 className="text-3xl font-semibold text-center text-gray-800">🧠 RAG Chatbot</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-lg p-6">
+        <h1 className="text-2xl font-bold mb-4">📰 AI News Assistant</h1>
 
-        <div className="h-96 overflow-y-auto bg-gray-50 border rounded-md p-4 space-y-3">
-          {messages.map((msg, index) => (
+        <div
+          ref={chatContainerRef}
+          className="h-[400px] overflow-y-auto border rounded p-4 bg-gray-50 mb-4"
+        >
+          {messages.map((msg, idx) => (
             <div
-              key={index}
-              className={`p-2 rounded-lg ${msg.startsWith("Q:")
-                ? "bg-blue-100 text-blue-800"
-                : "bg-green-100 text-green-800"}`}
+              key={idx}
+              className={`my-2 p-2 rounded ${
+                msg.type === "user"
+                  ? "bg-blue-100 text-right"
+                  : "bg-gray-200 text-left"
+              }`}
             >
-              {msg}
+              {msg.text}
             </div>
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2">
           <input
-            type="text"
+            className="flex-1 border rounded px-3 py-2"
+            placeholder="Ask something about the news..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask me anything..."
-            className="flex-1 p-3 border border-gray-300 rounded-md"
+            disabled={loading}
           />
           <button
-            onClick={sendMessage}
-            className="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 transition"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            onClick={handleSend}
+            disabled={loading}
           >
             Send
           </button>
           <button
-            onClick={resetChat}
-            className="bg-red-500 text-white px-6 py-3 rounded-md hover:bg-red-600 transition"
+            className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+            onClick={handleReset}
+            disabled={loading}
           >
             Reset
           </button>
@@ -90,6 +125,6 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
 export default App;
