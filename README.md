@@ -13,6 +13,29 @@ A React-based frontend for a RAG (Retrieval-Augmented Generation) powered chatbo
 - ⌨️ Enter key support for sending messages
 - 🔄 Loading state indicators
 - 🎯 Error handling for API requests
+- 🔒 Secure session management with UUID
+
+## Project Structure
+
+```
+RAG-Powered-Chatbot-for-News-Websittes-frontend/
+├── public/                      # Static files
+│   └── index.html              # Main HTML file
+├── src/                        # Source code
+│   ├── components/             # React components
+│   │   ├── ChatMessage.jsx     # Single message component
+│   │   ├── MessageList.jsx     # Chat history component
+│   │   └── InputBar.jsx        # Input and buttons component
+│   ├── App.jsx                 # Main application component
+│   ├── App.css                 # Component styles
+│   ├── main.jsx               # Application entry point
+│   └── index.css              # Global styles
+├── package.json               # Dependencies and scripts
+├── tailwind.config.js        # Tailwind configuration
+├── postcss.config.js         # PostCSS configuration
+├── vite.config.js           # Vite configuration
+└── .gitignore               # Git ignore rules
+```
 
 ## Prerequisites
 
@@ -73,19 +96,6 @@ The frontend communicates with the following backend endpoints:
 - **Method**: POST
 - **Purpose**: Clears chat history and creates new session
 
-## Session Management
-
-The application implements session management using the following logic:
-
-1. On first load, a new UUID is generated for the session
-2. The session ID is stored in localStorage for persistence
-3. All API requests include the session ID
-4. The reset button:
-   - Clears the current session
-   - Generates a new session ID
-   - Updates localStorage
-   - Clears the chat history
-
 ## Features Implementation
 
 ### Chat Interface
@@ -107,21 +117,39 @@ The application implements session management using the following logic:
 - Console logging for debugging
 - Graceful fallback for failed requests
 
+### Session Management
+1. On first load:
+   - Generates new UUID for session
+   - Stores in localStorage
+   - Fetches chat history if exists
+
+2. During chat:
+   - Includes session ID in all API requests
+   - Maintains message history
+   - Handles session persistence
+
+3. On reset:
+   - Clears current session
+   - Generates new session ID
+   - Updates localStorage
+   - Clears chat history
+
 ## Development
 
+### Available Scripts
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
 
-## Dependencies
+### Dependencies
 
-### Production
+#### Production
 - react: ^19.1.0
 - react-dom: ^19.1.0
 - axios: ^1.9.0
 
-### Development
+#### Development
 - @vitejs/plugin-react: ^4.4.1
 - autoprefixer: ^10.4.16
 - postcss: ^8.4.31
